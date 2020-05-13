@@ -1,0 +1,518 @@
+---
+title: "Fatal Crashes in the US"
+author: "Amit Min, Zain Shahzad, John Lickteig, Lauren McCormick"
+date: "4/25/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Introduction
+
+Driving under the influence is a major problem in our country. Almost 30 people die every day in the United States in crashes that involve a driver impaired by alcohol. There are over 100 million self-reported instances of alcohol-impaired driving every year, as more than a million drivers are arrested for driving under the influence of alcohol or other drugs.  This is a problem that is only worsening as the years go by.  Even with preventative actions taken by the government and national awareness of the issue, there seems to be little to no effect on yearly reported numbers of fatalities involving impaired drivers.  Our group explored the national fatal car crash dataset from 2015 to learn more about why these accidents keep happening, and how to prevent them. In researching this topic in depth, we narrowed our interests down to two questions:
+
+Can we predict if a drunk driver was present in a fatal crash?
+
+Are there population-level factors that can be used to predict the per capita rate of fatal drunk driving crashes in a given area?
+
+For data regarding question #1, our group wanted to know if there is any way to predict if a drunk driver was present in a crash using different conditions as predictors.  Knowing if there is a strong relationship between fatalities by drunk drivers and different surrounding conditions can help us understand patterns that are associated with our topic at hand.  This can spark new ideas about creating new preventative measures for certain people and places that may be a threat to drivers on the road.  Our second question looked at the characteristics associated with rates of drunk driving per capita in counties across the United States. Understanding the association between population-level characteristics and drunk driving crashes could allow us to identify potential drunk driving “hotspots” and subsequently design and enact targeted interventions in those areas. 
+Through exploring our two questions, we may be able to create awareness about the patterns of drunk driving in the United States. More importantly, we can modify the lens through which drunk driving is viewed to create more progressive conversations to ultimately keep the citizens safe.
+
+
+
+
+# Data
+
+This data was compiled by the National Highway Traffic Safety Administration and hosted by Kaggle. The datatset was made in an effort to draw ideas and suggest solutions in order to approach this problem in an objective way. The dataset contains data on every fatal crash that occurs within the United States and invlves a motor vehicle. Totalling 70 columnns of variables, this dataset had many possible avenues for analysis. The data for the year 2015 contains 32,538 unique observations in which fatal accidents occurred. The data for the year 2016 contains 34,722 observations. Each observation contains a response for each of the 70 variables that can be used to discern the details of the crash.
+
+Because the data is listed by individual observations, our analysis often consists of counting the occurances of a specific variable and comparing multiple variables in order to draw a conclusion. The following table shows the example of what our "cleaned" data may look like. We count the number of accidents per capita, and the drunks accidents per capita. We can then see if there is a correlation between the two (which it appears there is!).
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+library(ggplot2)
+library("readxl")
+library(usmap)
+library(data.table)
+library(dplyr)
+library(formattable)
+library(tidyr)
+```
+
+```{r, fig.width = 15, echo=FALSE, echo=FALSE, warning=FALSE, message=FALSE}
+myData <- read.csv('CRASH_2015_DATA.csv', header = TRUE)
+countStates <- data.frame(state=unique(myData$state_name), drunkCases = 0)
+i = 1
+for (state in unique(myData$state_name)) {
+  countStates$drunkCases[i] = nrow(subset(subset(myData,state_name == state), number_of_drunk_drivers > 0))
+  i = i + 1
+}
+populationData <- read.csv('stateCSV.csv', header = TRUE)	
+mergedData <- merge(countStates, populationData, by.x = "state", by.y = "State")
+mergedData["DrunksPerCapita"] = mergedData$drunkCases / mergedData$Population
+
+myData <- read.csv('stateCSV.csv', header = TRUE)
+myData["AccidentsPerCapita"] = myData$Amount / myData$Population
+myData <- myData %>%
+  rename(
+    state = State
+  )
+
+mergedData2 <- merge(myData, mergedData)
+mergedData2 <- mergedData2[order(-mergedData2$AccidentsPerCapita),]
+
+
+mergedData2$DrunksPerCapita <- round(mergedData2$DrunksPerCapita, digits=7)
+
+formattable(head(mergedData2, n = 15), list(
+  area(col = c(AccidentsPerCapita, DrunksPerCapita)) ~ normalize_bar("pink", 0.2)
+))
+
+```
+
+
+Here is the same data, but represented visually. The graphs show the per capita rate of total accidents and fatal accidents.
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+
+myData <- read.csv('stateCSV.csv', header = TRUE)
+myData["AccidentPerCapita"] = myData$Amount / myData$Population
+myData <- myData %>%
+  rename(
+    state = State
+  )
+#myData
+
+plot_usmap(data = myData, values = "AccidentPerCapita", color = "red", labels = TRUE) + 
+  scale_fill_continuous(name = "Fatal Accidents Per Capita", label = scales::comma) + 
+  theme(legend.position = "right")
+
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+myData <- read.csv('CRASH_2015_DATA.csv', header = TRUE)
+countStates <- data.frame(state=unique(myData$state_name), drunkCases = 0)
+i = 1
+for (state in unique(myData$state_name)) {
+  countStates$drunkCases[i] = nrow(subset(subset(myData,state_name == state), number_of_drunk_drivers > 0))
+  i = i + 1
+}
+
+populationData <- read.csv('stateCSV.csv', header = TRUE)	
+mergedData <- merge(countStates, populationData, by.x = "state", by.y = "State")
+mergedData["DrunksPerCapita"] = mergedData$drunkCases / mergedData$Population
+
+
+
+#mergedData
+
+plot_usmap(data = mergedData, values = "DrunksPerCapita", color = "red", labels = TRUE) + 
+  scale_fill_continuous(name = "Drunk Fatalities Per Capita", label = scales::comma) + 
+  theme(legend.position = "right")
+
+```
+
+We first asked if it was possible to predict if a drunk driver was involved in a crash. We used "Type" which contains the collision type such as front-to-front or front-to-rear. "Probability" contains a binary yes or no response for if the driver was drunk. "Hour" contains an hour of crash time from 0-24, with 0 being the start of a new day. "Land" indicates the type of land that the crash occurred on such as rural or urban.
+
+
+In order to answer our second question regarding potential population-level predictors of fatal drunk driving crashes, we first had to aggregate our data by location. We chose to conduct this analysis at the county level because doing so gave us a substantial number of data points and allowed us to easily link our dataset with census information. Our data also contained information about the state and city in which a crash occurred, but using state-aggregated data would have only given us 50 observations to work with and using city-aggregated data would have made it more difficult to link up with population information from the census. Ultimately, we ended up with 2870 observations of five variables after aggregation. The five variables included in this dataset were state_name, state_abbrev, county, total_crashes, and total_drunk_driver where total_crashes represents the sum of all fatal crashes in a given county and total_drunk_driver represents the sum of fatal crashes involving a drunk driver. For this portion of our analysis we used combined data from 2015 and 2016 as one dataset could not serve as a test for models trained on the other given that the same locations are represented in both.
+
+After aggregating our primary dataset, we then had to pull in additional data from outside sources to gain information about the characteristics of each county. Specifically, we linked our data on fatal car crashes to 1) data from the 2010 census detailing the urbanicity of each U.S. county and 2) data from the Insurance Institute for Highway Safety (IIHS) summarizing the maximum allowable speed limits by state. The census dataset we used contained information about the population and area of each county broken up based on urban and rural classification. Of the 26 variables in the census data, we only retained four for our analysis to avoid multicollinearity. We joined these four variables - population, area, percentage of the population that is rural, percentage of the area that is rural - with our data using the General Service Administration’s Geographic Location Codes. We obtained data on the maximum allowable speed limits in each state from the IIHS via web scraping, then averaged the speed limits across all road types to get a single average maximum speed limit for the state. This data was joined to our original dataset by state.
+
+
+# Results
+
+Unfortunately due to conflicts while merging the projects across our computers, question #2 had to be place before question #1. As such, the commentary will remain the same, referencing #2 and #1 as if they were still in order.
+
+## Question 2
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+library(tidyverse)
+library(modelr)
+library(rvest)
+library(dbplyr)
+library(caret)
+library(purrr)
+library(broom)
+library(glmnet)
+library(kableExtra)
+library(plotly)
+library(viridis)
+library(ggpubr)
+
+crashes2015 = read.csv("CRASH_2015_CLEANED.csv")
+crashes2016 = read.csv("CRASH_2016_CLEANED.csv")
+pop_data = read.csv("Urban_Rural_County.csv")
+
+crashes = rbind(crashes2015, crashes2016)
+```
+
+```{r, warning = FALSE, message = FALSE, echo = FALSE}
+#Scrape state speed limits
+URL.SPEED = "https://www.iihs.org/topics/speed/speed-limit-laws"
+SPEED = URL.SPEED %>%
+                read_html() %>%
+                html_table(fill=T) %>%
+                .[[1]]
+
+state_speeds = SPEED 
+
+names(state_speeds) <- c("State", "Rural", "Urban", "Other_Limited", "Other")
+
+state_speeds = state_speeds %>%
+  mutate(`Rural Interstates` = substr(Rural, start = 1, stop = 2)) %>%
+  mutate(`Urban Interstates` = substr(Urban, start = 1, stop = 2)) %>%
+  mutate(`Other Limited Access Roads` = ifelse(State == "Montana", 70, substr(Other_Limited, start = 1, stop = 2))) %>%
+  mutate(`Other Roads` = ifelse(State == "Montana", 70, substr(Other_Limited, start = 1, stop = 2))) %>%
+  select(-Rural, -Urban, -Other_Limited, -Other) %>%
+  mutate(Speed_Limit = NA)
+
+state_speeds$`Rural Interstates` = as.numeric(state_speeds$`Rural Interstates`)
+state_speeds$`Urban Interstates` = as.numeric(state_speeds$`Urban Interstates`)
+state_speeds$`Other Limited Access Roads` = as.numeric(state_speeds$`Other Limited Access Roads`)
+state_speeds$`Other Roads` = as.numeric(state_speeds$`Other Roads`)
+
+state_speeds$Speed_Limit = rowMeans(state_speeds[,c(2:5)])
+
+state_speeds$`Rural Interstates` = as.numeric(state_speeds$`Rural Interstates`)
+state_speeds$`Urban Interstates` = as.numeric(state_speeds$`Urban Interstates`)
+state_speeds$`Other Limited Access Roads` = as.numeric(state_speeds$`Other Limited Access Roads`)
+state_speeds$`Other Roads` = as.numeric(state_speeds$`Other Roads`)
+```
+
+```{r, echo = FALSE}
+#Create a binary variable indicating whether or not a drunk driver was involved in a given crash
+crashes2 = crashes %>%
+  mutate(drunk_driver = ifelse(number_of_drunk_drivers >= 1, 1, 0))
+```
+
+```{r, warning = FALSE, message = FALSE, echo = FALSE}
+#Join speed information into crashes dataset
+crashes3 = crashes2 %>%
+  rename(State = state_name) %>%
+  group_by(county, State, state_abbrev) %>%
+  summarize(
+    total_crashes = n(),
+    total_drunk_driver = sum(drunk_driver)
+  ) %>%
+  mutate(percent_drunk_driving = (total_drunk_driver / total_crashes) * 100) %>%
+  left_join(state_speeds) 
+```
+
+```{r, echo = FALSE, warning = FALSE, message = FALSE}
+#Join population information into crashes dataset
+pop_data2 = pop_data %>%
+  rename(State = STATENAME, county = COUNTY) 
+  
+crashes4 = crashes3 %>%
+  left_join(pop_data2) %>%
+  select(-STATE, -POP_UA, -POPPCT_UA, -AREA_UA, -AREAPCT_UA, -POPDEN_UA, -POP_UC, -POPPCT_UC, -AREA_UC, -AREAPCT_UC, -POPDEN_UC) %>%
+  rename(Population = POP_COU, Area = AREA_COU, Urban_Population = POP_URBAN, Urban_Pop_Percentage = POPPCT_URBAN, Urban_Area = AREA_URBAN, Urban_Area_Percentage = AREAPCT_URBAN, Urban_Density = POPDEN_URBAN, Rural_Population = POP_RURAL, Rural_Pop_Percentage = POPPCT_RURAL, Rural_Area = AREA_RURAL, Rural_Area_Percentage = AREAPCT_RURAL, Rural_Density = POPDEN_RURAL) %>%
+  mutate(crashes_per_capita = total_crashes / Population) %>%
+  mutate(drunk_driving_crashes_per_capita = total_drunk_driver / Population) %>%
+  rename(county_number = county, county_name = COUNTYNAME) %>%
+  arrange(desc(drunk_driving_crashes_per_capita)) %>%
+  mutate(county_type = ifelse(Rural_Pop_Percentage == 100, "Completely Rural", ifelse(Urban_Pop_Percentage >= Rural_Pop_Percentage, "Mostly Urban", "Mostly Rural"))) 
+```
+  
+  In addition to exploring the factors associated with fatal drunk driving crashes on an individual level, we were also interested in examining the population-level correlates of drunk driving. Thus, the second question we aimed to address was “Are there population-level factors that can be used to predict the per capita rate of fatal drunk driving crashes in a given area?” We came to this question in the course of our exploratory data analysis after noticing several states that appeared to be drunk driving “hotspots” based on per capita fatality rates. South Carolina, Mississippi, Arkansas, Montana, and Wyoming were the five states we identified as having particularly high rates of fatal drunk driving crashes and given their geographic diversity, we could determine no obvious similarities between them that might explain this phenomenon making this a perfect subject for further exploration.
+  
+  Although we initially developed this question in the process of exploring differences in  fatal drunk driving crashes per capita by state, we actually built our predictive models on county-level data for the reasons described above in the Data section. Before we began, we simply graphed the distribution of drunk driving crashes across all U.S. counties stratified by urbanicity to check for the presence of outliers and, as shown in the left boxplot below, there was one very obvious anomalous data point from a completely rural county. Upon further examination, we found that this outlier represents data from Loving County, Texas which, as of the 2010 census, had a total population of 82 residents making it the second least populous county in the United States. Due to the extremely low population of Loving County, a single crash in the two year period from January 2015 to December 2016 was responsible for skyrocketing the county’s per capita rate of drunk driver-involved fatal car crashes to more than six times that of the county with the next highest per capita rate. Thus, we chose to exclude this data point from our analysis. When we reexamined the data after removing Loving County we found that, while a large number of data points remain outside the third quartile plus 1.5 times the interquartile range, none appeared anomalous enough to remove. To verify that the high per capita rates seen in some completely rural counties were not due to the same phenomenon seen in Loving County, we also examined population and fatal crash data from the counties with the 10 highest per capita rates of fatal drunk driving crashes. As shown in the table below, this examination revealed that, while some of these data points do represent a single crash in a small population, the majority do not. Thus, we concluded that it would be unwise to exclude these observations from our analysis. 
+
+```{r, echo = FALSE, fig.width = 10}
+crashes4.1 = crashes4 %>%
+  filter(!is.na(county_type)) %>%
+  mutate(dd_log = drunk_driving_crashes_per_capita) 
+
+distrib <- ggplot(crashes4.1, aes(x = county_type, y = dd_log, fill = county_type, color = county_type)) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha = 0.3) +
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = "Distribution of Fatal Drunk Driving Crashes Per Capita") +
+  ylab("Crashes Per Capita") +
+  xlab(" ") +
+  theme_minimal() +
+  theme(legend.position = "none") +
+  coord_flip() 
+
+#ggplotly(distrib, tooltip = "text")
+#, text = paste("County: ", county_name, "\n", "State: ", State, "\n", "Population: ", Population, "\n", "Per Capita: ", drunk_driving_crashes_per_capita, "\n", "Fatal Crashes: ", total_crashes, "\n", "Fatal Drunk Driving Crashes: ", total_drunk_driver, sep = "")
+
+crashes4.2 = crashes4.1 %>%
+  filter(dd_log <= 0.0025)
+
+distrib2 <- ggplot(crashes4.2, aes(x = as.factor(county_type), y = dd_log, fill = factor(county_type), color = factor(county_type))) +
+  geom_boxplot() +
+  scale_fill_viridis(discrete = TRUE, alpha = 0.3) +
+  scale_color_viridis(discrete = TRUE) +
+  labs(title = "") +
+  ylab("Crashes Per Capita") +
+  xlab(" ") +
+  theme_minimal() +
+  theme(legend.position = "none", axis.text.y=element_blank()) +
+  coord_flip() 
+
+topten <- as.data.frame(crashes4.2) %>%
+  arrange(desc(drunk_driving_crashes_per_capita)) %>%
+  select(county_name, state_abbrev, Population, total_crashes, total_drunk_driver, drunk_driving_crashes_per_capita) %>%
+  rename(County = county_name, State = state_abbrev, `All Fatal Crashes` = total_crashes, `Fatal Drunk Driving Crashes` = total_drunk_driver, `Per Capita Rate` = drunk_driving_crashes_per_capita)
+
+ggarrange(distrib, distrib2, widths = c(6.7, 5))
+head(topten, 10) %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover"))
+```
+
+In order to construct our models we used elastic net regression, a form of regularized linear regression. This means that we constructed our models in a way that both minimized mean-squared error and penalized the addition of new variables to the model in an effort to reduce the magnitude and variability of coefficients. By doing this, we sacrificed bias for a reduction in variability with the goal of achieving a balance between the two. There are three common methods of regularized linear regression: ridge, lasso, and elastic net. In ridge regression, the loss function -- mean-squared error in our case -- incorporates the squared coefficient values as a penalty expression which drives coefficients toward zero in an asymptotic manner such that all variables are included in the model, but only those that are significant have coefficients of any magnitude. In lasso regression, by contrast, the absolute value of the coefficients acts as a penalty in the loss function which forces the coefficients of insignificant variables to equal zero while those of significant variables are retained thereby reducing the complexity of the model. And finally, in elastic net regression, the linear combination of the ridge and lasso regression penalty expressions is used resulting in a model in which some coefficients have been driven asymptotically toward zero and others have been set to equal zero. Selection between these three regression methods in R is determined by the parameter alpha such that ridge regression is performed when alpha = 0, lasso regression is performed when alpha = 1, and elastic net regression is performed when alpha is between zero and one. Additionally, all three regression methods can be “tuned” via the parameter lamba which is multiplied by the penalty expression in a regression thereby determining the degree of impact that penalty has. If lambda were to be set to zero then no penalty would be applied at all. 
+
+
+For the purposes of our analysis, we used the cv.glmnet() function in R to construct ten different cross-validated models ranging from an alpha of 0 to an alpha of 1 in increments of 0.1. For each alpha we specified, this function used 10-fold cross validation to determine a corresponding lambda that would minimize mean-squared error. Once we had these ten models defined by their unique alpha and lambda values, we used mean-squared error and complexity to determine the best model. The best model we found using this method had an alpha of 0.3 and a lambda of 0.00010645939, however, its mean-squared error of 0.00000001662434 was only marginally lower than that of the lasso regression-like model (alpha = 1.0) which had a mean-squared error of 0.00000001672367. Thus, we chose to proceed with the later model based on its greater simplicity. This model had an alpha of 1.0 and a lambda of 	0.00003846921; shown below are coefficients of the non-zero parameters in this model, a plot of the predicted per capita rates of fatal crashes involving drunk drivers, and a plot of the residuals from these predictions. 
+	
+
+```{r, echo = FALSE, fig.show = 'hide', warning = FALSE, message = FALSE}
+crashes12 = as.data.frame(crashes4.2) %>%
+  select(drunk_driving_crashes_per_capita, Population, Area, Rural_Pop_Percentage, Rural_Area_Percentage, Speed_Limit) %>%
+  na.omit() %>%
+  select(drunk_driving_crashes_per_capita, everything())
+
+crashes12.1 = crashes12 %>%
+  select(drunk_driving_crashes_per_capita)
+
+crashes13 = crashes12 %>%
+  as.data.frame() %>%
+  select(drunk_driving_crashes_per_capita, everything())
+
+set.seed(250)
+
+TEST.STATES = sample(x = unique(crashes13$Population),size = 600,replace = F)
+
+crashes13.TRAIN = as.data.frame(anti_join(crashes13, tibble(Population = TEST.STATES),by="Population")) %>%
+  select(drunk_driving_crashes_per_capita, everything())
+
+crashes13.TRAIN$drunk_driving_crashes_per_capita = as.double(crashes13.TRAIN$drunk_driving_crashes_per_capita)
+
+crashes13.TEST= as.data.frame(semi_join(crashes13, tibble(Population = TEST.STATES),by="Population")) %>%
+  select(drunk_driving_crashes_per_capita, everything())
+
+#Default: 10 Fold Cross Validation
+RESULT=NULL
+for (i in 0:10) {
+    cv.out = cv.glmnet(x=as.matrix(crashes13.TRAIN[,-1]),
+                       y=as.vector(crashes13.TRAIN[,1]),
+                       type.measure="mse", 
+                       alpha=i/10)
+    alpha=i/10
+    best.lambda=cv.out$lambda.1se
+    y.test =predict(cv.out, s = best.lambda, newx = as.matrix(crashes13.TEST[,-1]))
+    out.mse=mean((crashes13.TEST$drunk_driving_crashes_per_capita-y.test)^2)
+    RESULT=rbind(RESULT,c(alpha,best.lambda,out.mse))
+}
+colnames(RESULT)=c("alpha","lambda","MSE")
+
+RESULT2=as.data.frame(RESULT) %>% filter(rank(MSE)<=4)
+#head(RESULT2)
+
+RESULT3=NULL
+
+for(k in 1:4){
+  fit=glmnet(x=as.matrix(crashes13[,-1]),y=as.matrix(crashes13[,1]),alpha=RESULT2$alpha[k])
+  RESULT3=rbind(RESULT3,cbind(k,1:7,as.numeric(coef(fit,s=RESULT2$lambda[k]))))
+}
+
+colnames(RESULT3)=c("Model","Parameter","Coefficient")
+RESULT3=as.data.frame(RESULT3)
+
+RESULT3 %>% 
+  ggplot() +
+  geom_point(aes(x=Parameter,y=Coefficient,color=as.factor(Model)),size=2) +
+  facet_grid(as.factor(Model)~.) +
+  guides(color=FALSE)
+
+y=crashes13$drunk_driving_crashes_per_capita
+X=model_matrix(crashes13,drunk_driving_crashes_per_capita~.*.)[,-1]
+var.names=names(X)
+#dim(X)
+
+RESULT.MOD = as.data.frame(RESULT)
+```
+
+
+```{r, echo = FALSE, fig.show = 'hide', warning = FALSE, message = FALSE}
+best.alpha=1.0
+best.lambda=0.00003846921
+
+temp <- as.data.frame(c("Intercept", "Rural Population Percentage * Average Speed Limit"))
+names(temp) <- c("Parameter")
+
+best.mod=glmnet(y=y,x=as.matrix(X),nlambda=1,lambda=best.lambda,alpha=best.alpha)
+best.coef=as.tibble(as.matrix(coef(best.mod)))
+best.coef2=best.coef %>% 
+              mutate(Parameter1=c("Int",var.names)) %>%
+              rename(Coefficient=s0) %>%
+              select(Parameter1,Coefficient)
+nonzero.best.coef=best.coef2 %>%
+              filter(Coefficient!=0) %>%
+              cbind(temp) %>%
+              select(Parameter, Coefficient)
+
+nonzero.best.coef$Coefficient = formatC(nonzero.best.coef$Coefficient, format = "e", digits = 2)
+
+crashes13.PRED = crashes13
+crashes13.PRED$dd.pred = predict(best.mod,newx=as.matrix(X))
+
+ggplot(crashes13.PRED) +
+  geom_point(aes(x = drunk_driving_crashes_per_capita, y = dd.pred), color="lightskyblue2") +
+  geom_abline(a=0,b=1,linetype="dashed") +
+  theme_minimal() +
+  ylab("Predicted") +
+  xlab("Actual")
+
+ggplot(crashes13.PRED) +
+  geom_freqpoly(aes(x = drunk_driving_crashes_per_capita - dd.pred),color="lightskyblue2") +
+  theme_dark() +
+  xlab("Residuals") +
+  ylab("Frequency")
+```
+
+```{r, echo = FALSE}
+PRED.plot <- ggplot(crashes13.PRED, aes(x = Rural_Pop_Percentage * Speed_Limit)) +
+  geom_point(aes(y = drunk_driving_crashes_per_capita), color = "grey", alpha = 0.4) +
+  geom_line(aes(y = dd.pred), color = "#440154FF") +
+  theme_minimal() +
+  labs(title = "Predicted Fatal Drunk Driving \nCrashes Per Captia") +
+  xlab("Rural Population Percentage * Average Speed Limit") +
+  ylab("Fatal Drunk Driving Crashes Per Capita")
+```
+
+```{r, echo = FALSE}
+RESID.plot <- ggplot(crashes13.PRED) +
+  geom_histogram(aes(x = drunk_driving_crashes_per_capita - dd.pred), fill="#21908C", color = "#21908CFF", bins = 25, alpha = 0.3) +
+  theme_minimal() +
+  labs(title = "Distribution of Residuals") +
+  xlab("Residuals") +
+  ylab("Frequency")
+```
+
+```{r, echo = FALSE, eval = FALSE}
+scales::viridis_pal()(3)
+```
+
+```{r, echo = FALSE, fig.width = 10}
+nonzero.best.coef %>%
+  kable() %>%
+  kable_styling(bootstrap_options = c("striped", "hover"), full_width = F)
+ggarrange(PRED.plot, RESID.plot)
+```
+
+As shown above, the only variable determined to be a significant predictor of fatal drunk driving crashes per capita by our model was the multiplicative interaction between the percentage of the county’s population that lives in rural areas and the average maximum speed limit in the state. However, that being said, the plot of predictions shown above highlights the high level of variability in our data. In the plot, the purple line represents predictions from our model and the grey scatter plot represents actual observations thereby illustrating that, while the model we developed indicates a significant pattern in our data, its predictive capacity appears to be low. Furthermore, the plot of residuals shown above is noticeably right-skewed and centered below zero. This indicates that the model slightly overestimates a large portion of the data while simultaneously greatly underestimating a smaller segment. 
+  
+  
+## Question 1
+
+```{r, include=FALSE, echo=FALSE, warning=FALSE, message=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(mosaic)
+library(Stat2Data)
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(ggiraphExtra)
+library(plyr)
+library(DAAG)
+library(ggeffects)
+library(sjmisc)
+crashes = read.csv("CRASH_2015_CLEANED.csv")
+
+head(crashes)
+```
+
+
+Our first question was, "Can you predict if a drunk driver was involved in a crash?" We approached this question by deciding that the most logical predictors are the time of day, land use (rural or urban), and the collision type (Angle, Front-to-Front, Front-to-Rear, and Not in Collision With Motor Vehicle in Transport). We first started by thinking about what time would be most likely for a drunk driver to be involved in a crash.  It would make sense for midnight to be a good time in urban areas, as people are likely to be in and out of bars at the time.  We used this logic as a comparison point when analyzing the results of the data.
+       
+When predicting the presence of a drunk driver, we noticed that the results from the data seemed to follow our logic.  It was interesting, though, to see that the results for rural areas were contradicting the results for urban areas.  This could be due to a couple of different reasons.  First off, drinking culture, in general, is different in rural areas. Studies show that the lifetime prevalence of alcohol consumption in rural areas is significantly higher than in urban areas.  Alcohol abuse, the specific topic, in this case,  leads to most cases of drunk driving, and there are many different reasons why this is the case.  A big reason for these high drunk driving mortality rates is that drugs are not as readily available in rural areas as they are in large metropolitan areas.  This could cause addicts to rely on alcohol, which can lead to the higher percentage that rural areas share of alcohol abuse.  Poverty, unemployment, and isolation could also be the cause of these high numbers.  It would be much more difficult for a substance abuser to seek medical attention when they are experiencing those factors.  This can cause addicts and abusers to worsen their alcohol use indefinitely over time, as there may be no figure that can intervene.
+       
+The model above may reflect the drinking culture in rural areas, as the probability (log-odds) of a drunk driver being involved in the crash increases as the day goes on. Though this is counterintuitive if rural drunk driving crashes are approached with the same lense that analyzes urban areas, it is important to understand the difference between the drinking culture in both types of areas and its effects on alcohol abuse cases.  When testing the accuracy of the model, we were satisfied with how well drunk drivers were predicted to be involved in a crash.  The model was 73% accurate, which shows that the graphs above quite accurate for the predictors that are used.  It is quite tough to predict if a drunk driver was involved, as the danger that they present is the randomness at which they could kill somebody on the road.  There can be an infinite amount of predictors when looking at this topic, but the ones that made the most logical sense have been proven to be quite accurate from our model.
+       
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#2015 data edit
+names(crashes)[names(crashes) == "manner_of_collision_name"] <- "Type"
+names(crashes)[names(crashes) == "if_driver_drunk"] <- "Probability"
+names(crashes)[names(crashes) == "hour_of_crash"] <- "Hour"
+names(crashes)[names(crashes) == "land_use_name"] <- "Land"
+crashes$Probability <- as.numeric(crashes$number_of_drunk_drivers>0)
+
+crashes$collision_type <- as.numeric(crashes$Type)
+crashes = crashes %>% filter(
+  Type %in% c("Angle", "Front-to-Front", "Front-to-Rear","Not Collision with Motor Vehicle in Transport (Not Necessarily in Transport for\n2005-2009)" )
+  )
+
+#crashes
+
+```
+
+```{r fig.height = 10, fig.width = 100, echo=FALSE, warning=FALSE, message=FALSE}
+#Prediction model graph
+moddrunk=glm(Probability~Hour+(Land*Hour)+(Hour*Type),family = binomial,data = crashes)
+
+
+
+graph = ggPredict(moddrunk,interactive=TRUE,colorn=100,jitter=FALSE,xlim = c(0,24),back.transform = TRUE)
+graph
+     
+```
+
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#2016 data edit
+crashes_2016 = read.csv("CRASH_2016_CLEANED.csv")
+crashes_2016$if_driver_drunk <- as.numeric(crashes_2016$number_of_drunk_drivers>0)
+names(crashes_2016)[names(crashes_2016) == "manner_of_collision_name"] <- "Type"
+names(crashes_2016)[names(crashes_2016) == "if_driver_drunk"] <- "Probability"
+names(crashes_2016)[names(crashes_2016) == "hour_of_crash"] <- "Hour"
+names(crashes_2016)[names(crashes_2016) == "land_use_name"] <- "Land"
+```
+
+```{r, echo=FALSE, warning=FALSE, message=FALSE}
+#Accuracy analysis
+
+crashes3 = crashes_2016 %>% filter(
+  Type %in% c("Angle", "Front-to-Front", "Front-to-Rear","Not Collision with Motor Vehicle in Transport (Not Necessarily in Transport for\n2005-2009)" )
+  )
+crashes3 <- filter(crashes3, Land == "Rural" | Land == "Urban")
+
+
+crashes3$model_prob <- predict(moddrunk, crashes3, type = "response")
+
+crashes3 <- crashes3  %>% mutate(model_pred = (model_prob < 0))
+
+crashes3 <- crashes3 %>% mutate(accurate = (model_pred == Probability))
+newacc = as.numeric(crashes3$accurate)
+sum(newacc,na.rm=TRUE)/NROW(crashes3)
+
+
+```
+
+We then plotted a time-series analysis of some of the variables to visually understand how urban and rural DD crashes and all crashes differ throughout the day. We used an animation to achieve the effect of these crashes unfolding as hours of the day pass. Models are good for understanding which variables are significant predictors, but an animated visualization can tell a real story about the data and see how this data lives in the real world. This will also help us make more specific recommendations to real world entities for improvement on how they attempt to reduce drunk driving. To start, we grouped accidents by time of day, separated them by whether they occured in rural or urban settings, and then separated accidents involving a drunk driver from total accidents. Drinking related accidents comprise a smaller subset of total crashes, but the general pattern of crashes for both lines are similar. In fact, the general pattern of accidents throughout the day is quite similar between urban and rural in both DD accidents 
+
+[![Image from Gyazo](https://i.gyazo.com/59c9226a37d2e84b0d212f9df53c1159.gif)](https://gyazo.com/59c9226a37d2e84b0d212f9df53c1159)
+
+All accidents in urban and rural areas reach their lowest point around 4:00 AM and steadily increase until rural crashes reach their peak around 4:00 PM and urban reach theirs at about 9:00 PM. Urban and rural DD accidents follow a very similar pattern with the exception of a spike at around 2:00 AM for urban DD crashes. The trends in both of these categories make intuitive sense. The roadways in urban areas are busier until later in the day than rural areas, which may explain why the peak in accidents occurs 4 hour later in the day. The large spike in DD accidents in urban communities at 2:00 AM may be present because that's when bars close, and more cars on the road in urban areas lead to more fatal accidents than people driving home on emptier roads in rural areas. 
+
+
+
+
+
+# Conclusion
+
+
+Through our analysis of fatal motor vehicle accidents in 2015, we aimed to answer two questions related to drunk driving. We first looked to see what the best predictors were of whether a drunk driver was present or not based on available facts about the crash. We tested all the variables in the dataset, and found that time of day, type of land (rural or urban), and type of collision (head-on, rear end, angle, parked car) did the best job of predicting the odds of whether a driver under the influence of alcohol was involved in the crash. The graph produced shows these odds for each variable, with the probability of a drunk driver being present at its highest in a head-on collision around Midnight in a Rural setting. For the second question, we observed the population level factors that could be used to predict the per capita rate of fatal drunk driving crashes in a given area. We found that South Carolina, Mississippi, Wyoming, Montana, and Arkansas had the highest rates of per capita drunk driving fatalities, and used an elastic net regression model to determine which variables predict the per capita rate of fatal drunk driving crashes in an area. The only variable to be a significant predictor of fatal drunk driving crashes per capita by our model was the interaction between the percentage of the county’s population that lives in rural areas and the average maximum speed limit in the state. 
+
+
+Motor vehicle accidents are one of the leading causes of death in the United States. According to CDC data, there were over 40,231 motor vehicle accidents in 2017, up from 35,092 in 2015. Through identifying trends and better understanding the possible causes of fatal accidents, policies can be implemented and information can be disseminated to help keep people safer on the roads. Of the major factors that cause motor vehicle accident deaths (not wearing seatbelt, impaired driving, distracted driving, reckless driving), drunk driving comprises a large portion of fatal accidents. If measures are taken to reduce drunk driving, many lives can be saved each year. State governments can use our findings to identify times of the day in both urban and rural areas where it would be most effective to place DUI checkpoints to keep drunk drivers off the road. They can also use the findings about the manner of collision and set up checkpoints where these types of crashes most happen, like near intersections or busy roadways.
+	
+The findings in question 1 can be applied more generally to catching drunk drivers throughout the whole country by informing their prevention approach with what factors actually contribute to drunk driving. The findings in question 2 are location specific and can be used by respective state and local governments to inform new initiatives in their communities to combat drunk driving. Knowing that the interaction between the percentage of the county’s population that lives in rural areas and the average maximum speed limit in the state can predict the per capita rate of fatal drunk driving accidents, governments may find that they should lower the speed limits if a large portion of their population live in rural areas.
+
+
+How to stay safe while driving a car is a well told story: wear a seatbelt, do not drive drunk, do not use your phone, pay attention to the road. However, there are always new findings to be made in car accident data, especially datasets of this magnitude. We were able to examine the variables included in the dataset at each accident (time, location, land type, manner of collision - just to name a few) to draw inferences and make predictions about drunk driving. If several other variables were included, it would have made for a more robust analysis of DD. Knowing personal data about the driver like age, gender, type of car, whether they were wearing a seatbelt, and how many people were in the car would be interesting to include in the model to see which factors put a driver most at risk of getting into a drunk driving accident. Instead of looking at which factors about the crash make it most likely to have involved drinking, incorporating factors about the driver into the model may allow for more insights to be derived that help with prevention. This information could be used by insurance companies to raise rates for those at highest risk, which is unfortunate, but is how insurance companies operate. It also would have been useful to examine all motor vehicle accidents so severity of accidents could be predicted based on the many factors present. In this dataset, the number of fatalities could have been used as a proxy for crash severity, but the number of people in the vehicle is largely due to chance and does not truly indicate how severe the crash was (ie. how much damage the car suffered, whether the driver and/or passenger were killed). 
+It would have been useful to have access to data about how many crashes were related to distracted driving. Distracted driving may be the more relevant concern for our generation than drunk driving. According to the National Highway Traffic Safety Administration, drunk driving fatality rates are down 13% in the past 10 years while the proliferation of smartphones has caused distracted driving accidents to increase every year. While the country’s young people definitely take a safer approach to drunk driving than past generations have, and it still remains a problem, but possibly a more relevant problem for today’s drivers to search for solutions in the data is distracted driving. Even still, the advent of self-driving cars will certainly make our roads safer, but until this new technology becomes ubiquitous, certain changes can be put into place to protect people that share the road every day.
+
+
